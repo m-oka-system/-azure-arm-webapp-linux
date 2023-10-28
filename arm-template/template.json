@@ -1,0 +1,130 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "prefix": {
+      "type": "string",
+      "defaultValue": "arm"
+    },
+    "env": {
+      "type": "string",
+      "defaultValue": "dev"
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "japaneast"
+    },
+    "acrSkuName": {
+      "type": "string",
+      "defaultValue": "Basic"
+    },
+    "acrAdminEnabled": {
+      "type": "bool",
+      "defaultValue": true
+    },
+    "acrPublicNetworkAccessEnabled": {
+      "type": "bool",
+      "defaultValue": true
+    },
+    "acrZoneRedundancyEnabled": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "aspOsType": {
+      "type": "string",
+      "defaultValue": "Linux"
+    },
+    "aspSkuName": {
+      "type": "string",
+      "defaultValue": "B1"
+    },
+    "webAppHttpsOnly": {
+      "type": "bool",
+      "defaultValue": true
+    },
+    "webAppPublicNetworkAccessEnabled": {
+      "type": "bool",
+      "defaultValue": true
+    },
+    "webAppAlwaysOn": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "webAppFtpsState": {
+      "type": "string",
+      "defaultValue": "Disabled"
+    },
+    "webAppVnetRouteAllEnabled": {
+      "type": "bool",
+      "defaultValue": true
+    }
+  },
+  "variables": {
+    "resourceGroupName": "[concat(parameters('prefix'), '-', parameters('env'), '-rg')]",
+    "acrName": "[concat(parameters('prefix'), parameters('env'), 'acr01')]",
+    "servicePlanName": "[concat(parameters('prefix'), '-', parameters('env'), '-plan')]",
+    "webAppName": "[concat(parameters('prefix'), '-', parameters('env'), '-webapp')]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.ContainerRegistry/registries",
+      "apiVersion": "2019-12-01-preview",
+      "name": "[variables('acrName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "adminUserEnabled": "[parameters('acrAdminEnabled')]",
+        "publicNetworkAccess": "[if(parameters('acrPublicNetworkAccessEnabled'), 'Enabled', 'Disabled')]"
+      },
+      "sku": {
+        "name": "[parameters('acrSkuName')]"
+      }
+    },
+    {
+      "type": "Microsoft.Web/serverfarms",
+      "apiVersion": "2020-06-01",
+      "name": "[variables('servicePlanName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "reserved": "[equals(parameters('aspOsType'), 'Linux')]"
+      },
+      "sku": {
+        "name": "[parameters('aspSkuName')]"
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2020-06-01",
+      "name": "[variables('webAppName')]",
+      "location": "[parameters('location')]",
+      "dependsOn": ["[variables('servicePlanName')]"],
+      "properties": {
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('servicePlanName'))]",
+        "httpsOnly": "[parameters('webAppHttpsOnly')]",
+        "siteConfig": {
+          "alwaysOn": true,
+          "ftpsState": "Disabled",
+          "vnetRouteAllEnabled": true,
+          "scmUseMainIpRestriction": false,
+          "localMySqlEnabled": false,
+          "netFrameworkVersion": "v4.6"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites/config",
+      "apiVersion": "2019-08-01",
+      "name": "[concat(variables('webAppName'), '/appsettings')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', variables('webAppName'))]",
+        "[resourceId('Microsoft.ContainerRegistry/registries', variables('acrName'))]"
+      ],
+      "properties": {
+        "DOCKER_REGISTRY_SERVER_URL": "[concat('https://', variables('acrName'), '.azurecr.io')]",
+        "DOCKER_REGISTRY_SERVER_USERNAME": "[variables('acrName')]",
+        "DOCKER_REGISTRY_SERVER_PASSWORD": "[listCredentials(resourceId('Microsoft.ContainerRegistry/registries', variables('acrName')), '2019-05-01').passwords[0].value]"
+      }
+    }
+  ],
+  "outputs": {}
+}
